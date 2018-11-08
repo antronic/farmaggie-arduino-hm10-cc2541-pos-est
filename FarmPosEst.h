@@ -20,6 +20,7 @@
 struct DEVICE {
   String address;
   String mac;
+  String res;
   int rssi;
 
   // uint8_t hi;
@@ -32,7 +33,12 @@ struct EVENT {
   DEVICE device;
 };
 
-typedef void (*EventCallback)(EVENT event);
+struct MSG {
+  String msg;
+};
+
+// typedef void (*EventCallback)(EVENT event);
+typedef void (*EventCallback)(MSG msg);
 
 class FarmPosEst{
 public:
@@ -41,7 +47,6 @@ public:
   void begin();
   void update();
 
-  EVENT deviceNotFound();
   String getModuleName();
 
   String status;
@@ -52,5 +57,7 @@ private:
 
   String module_name;
   int moduleId;
+
+  EVENT deviceNotFound();
 };
 #endif
