@@ -14,6 +14,11 @@
 
 #define REST 100
 #define SEARCHING 11
+
+#define SCAN_IN_PROGRESS 12
+#define SCAN_ENDING 13
+#define SCAN_END 14
+
 #define CHECK_RESULT 22
 #define DONE_CHECK 33
 
@@ -42,12 +47,13 @@ typedef void (*EventCallback)(MSG msg);
 
 class FarmPosEst{
 public:
-  FarmPosEst(String moduleName, SoftwareSerial *ss, EventCallback eventCallback);
+  FarmPosEst(String moduleName, String moduleType, SoftwareSerial *ss, EventCallback eventCallback);
 
   void begin();
   void update();
 
   String getModuleName();
+  String getModuleType();
 
   String status;
 
@@ -56,6 +62,7 @@ private:
   EventCallback eventCallback;
 
   String module_name;
+  String module_type;
   int moduleId;
 
   EVENT deviceNotFound();

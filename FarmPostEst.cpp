@@ -3,9 +3,11 @@
 String str_token(String data, char separator, int index);
 EVENT deviceNotFound();
 
-FarmPosEst::FarmPosEst(String name, SoftwareSerial *softwareSerial, EventCallback eventHandler)
+FarmPosEst::FarmPosEst(String moduleName, String moduleType, SoftwareSerial *softwareSerial, EventCallback eventHandler)
 {
-  module_name = name;
+  module_name = moduleName;
+  module_type = moduleType;
+
   ss = softwareSerial;
   eventCallback = eventHandler;
 }
@@ -24,6 +26,24 @@ void FarmPosEst::begin() {
 
   // sets to Master/Central mode
   ss->print("AT+ROLE1");
+  delay(100);
+  while (ss->available())
+  {
+    String res = ss->readString();
+    Serial.println(res);
+  }
+
+  // sets notify mode
+  ss->print("AT+NOTI1");
+  delay(100);
+  while (ss->available())
+  {
+    String res = ss->readString();
+    Serial.println(res);
+  }
+
+  // sets max power
+  ss->print("AT+POWE3");
   delay(100);
   while (ss->available())
   {
@@ -53,6 +73,7 @@ void FarmPosEst::begin() {
 // update function using for scan
 void FarmPosEst::update() {
   static int MODULE_STATUS = REST;
+  static String res_tmp = "";
 
   // String device_address = "";
   // String mac = "";
@@ -60,127 +81,70 @@ void FarmPosEst::update() {
 
   if (MODULE_STATUS == REST) {
     // call command for SEARCHING
-    // Serial.println("Resting...");
-    ss->print("AT+DISI?");
-    // sets to SEARCHING status
+    delay(500);
+    ss->print("AT+DISC?");
     MODULE_STATUS = SEARCHING;
-    // reset values
-    // device_address = "";
-    // rssi = -1000;
-
     return;
   }
 
+  /*
+    EXAMPLE RESPONSE
+OK+DISCSOK+DIS0:F4844C4DC2A9OK+RSSI:-042
+OK+NAME:HMSensor
+OK+DISCE
+  */
+
   if (MODULE_STATUS == SEARCHING) {
+    static int SCAN_STATUS = SCAN_END;
     while (ss->available() > 0) {
       String res = ss->readString();
-      // If response starts with OK+DISIS
-      // that means module works
-      // then we remove OK+DISIS from response
-      // for next identify
-      res.replace("OK+DISCE", "");
-      res.replace("OK+DISIS", "");
-      // res.replace("OK+DIS+", "");
-
-      String response_temp = "";
-
       // Serial.println(res);
-      // if (res.length() >= 78) {
-      //   response_temp = res.substring(0, 100);
-      // }
 
-      // If response has "OK+DISC"
-      // that means module found some devices
-      // and the response per devices will at least 78 characters
-      // if (response.indexOf("OK+DISC") >= 0) {
+      // New incoming is starting
+      if (res.startsWith("OK+DISCS")) {
+        SCAN_STATUS = SCAN_IN_PROGRESS;
+        res.replace("OK+DISCS", "");
+        /* SCAN STARTS */
+      }
+      if (res.endsWith("OK+DISCE")) {
+        SCAN_STATUS = SCAN_ENDING;
+        res.replace("OK+DISCE", "");
+        /* SCAN IS ENDING */
+      }
 
-      // }
+      if (SCAN_STATUS == SCAN_IN_PROGRESS || SCAN_STATUS == SCAN_ENDING) {
+        res_tmp += res;
+      }
 
-      // Serial.println(response_temp);
+      if (SCAN_STATUS == SCAN_ENDING) {
+        SCAN_STATUS = SCAN_END;
 
-      if (res.length() >= 78) {
-        MSG msg;
-        msg.msg = res;
+        // Serial.println(res_tmp);
+        res_tmp.replace("\r", "#NEWLINE#");
+        res_tmp.replace("\n", "");
 
-        Serial.print("{ \"device\": \"");
+        Serial.print("{");
+        Serial.print("\"device\":\"");
         Serial.print(module_name);
-        Serial.print("\", ");
-        Serial.print("\"msg\": \"");
-        delay(1000);
-        // delay for send the message
-        Serial.print(res);
-        Serial.println("\"} ");
-        // eventCallback(msg);
-      }
-      MODULE_STATUS = REST;
-      return;
+        Serial.print("\",");
 
-      // BLOCK FROM HERE!!!!!!!!!!!!!!!!
+        Serial.print("\"type\":\"");
+        Serial.print(module_type);
+        Serial.print("\",");
 
-      int count = 1;
-      while (response_temp.startsWith("OK+DISC") && (response_temp.indexOf("OK+DISC") >= 0 && response_temp.length() >= 78) > 0) {
-      // while (response_temp.indexOf("OK+DISC") >= 0 && response_temp.length() >= 78) {
-        Serial.println(res);
-        String device_address = str_token(response_temp, ':', 2);
-        String hilo = str_token(response_temp, ':', 3);
-        String mac = str_token(response_temp, ':', 4);
-        String rssi_str = str_token(response_temp, ':', 5);
-        int rssi = rssi_str.toInt();
+        Serial.print("\"msg\":\"");
+        Serial.print(res_tmp);
+        Serial.print("\"}");
 
-        // Serial.println(response_temp);
-        // eventCallback(response_temp);
-        // Beacon will not has Mac Address as "0000000000"
-        if (mac != "0000000000" && device_address != "00000000000000000000000000000000") {
-          DEVICE device;
-          device.address = device_address;
-          device.mac = mac;
-          device.rssi = rssi;
-          device.res = res;
+        Serial.println();
 
-          EVENT event;
-          event.event_name = DEVICE_FOUND;
-          event.device = device;
-          // eventCallback(event);
-          String json = "{";
-          json += "\"device\": \"";
-          json += module_name;
-          json += "\", ";
-          json += "\"address\": \"";
-          json += event.device.address;
-          json += "\", ";
-          json += "\"mac\": \"";
-          json += event.device.mac;
-          json += "\", ";
-          json += "\"rssi\": \"";
-          json += event.device.rssi;
-          json += "\"";
-          json += "}";
-          Serial.println(json);
-        }
-
-        // response_temp.replace("OK+DISC", "");
-        // if (res.length() >= (78 * (count + 1))) {
-        //   response_temp = res.substring(78 * count, 78 * (count + 1));
-        // } else {
-        //   response_temp = res.substring(78 * count, res.length() - 1);
-        //   MODULE_STATUS = REST;
-        // }
-        // ++count;
-        res = res.substring(78);
-        if (res.indexOf("OK+DISCE") >= 0 || res.length() < 78) {
-          MODULE_STATUS = REST;
-          return;
-        }
-      }
-
-      // End of loop        // OK+DISCE will appear when meet at the end of response
-      // if (response.indexOf("OK+DISCE") >= 0 || response.length() < 78)
-
-      if (response_temp.length() < 78)
-      {
         MODULE_STATUS = REST;
-        return;
+        res_tmp = "";
+        /* SCAN END */
       }
+
+      // Serial.println("RES END");
+      return;
     }
   }
 }
@@ -201,6 +165,10 @@ EVENT FarmPosEst::deviceNotFound() {
 
 String FarmPosEst::getModuleName() {
   return module_name;
+}
+
+String FarmPosEst::getModuleType() {
+  return module_type;
 }
 
 /**
